@@ -11,20 +11,14 @@
 
 ## 安装
 
-**方式一：下载安装包**
-
-从[发布页](https://dcc176.github.io/manqu/)或 [Releases](https://github.com/DcC176/manqu/releases) 下载最新版 zip，解压到一个固定目录（不要留在「下载」或临时目录，清空后会失效），然后：
+从[发布页](https://dcc176.github.io/manqu/)或 [Releases](https://github.com/DcC176/manqu/releases) 下载 `manqu-v1.0.0.crx`，**不要解压**：
 
 1. 打开 `chrome://extensions`（Edge 为 `edge://extensions`）
 2. 打开右上角「开发者模式」
-3. 点「加载已解压的扩展程序」，选择解压出的 `manqu` 目录
+3. 把 crx 文件拖到页面空白处，在弹窗中确认添加
 4. 进入任意直播间，右下角出现控制面板
 
-Chrome 稳定版已关闭非商店来源 `.crx` 的安装通道，把 crx 拖进扩展页会被浏览器直接拒绝——这是浏览器策略，与插件无关。Edge 与部分 Chromium 系浏览器仍接受侧载，可用 Release 中的 `.crx` 拖入 `edge://extensions`。
-
-**方式二：从源码加载**
-
-选择仓库目录本身即可，其余步骤相同。
+Edge 与多数 Chromium 系浏览器接受这种方式。Chrome 稳定版会拒绝安装非 Chrome 应用商店来源的 crx——这是浏览器的安装策略，与文件是否签名无关。若使用 Chrome，可从仓库页 `Code → Download ZIP` 取源码，用「加载已解压的扩展程序」载入本目录。
 
 无需登录，无需额外权限（仅 `storage`，用于记住设置）。
 

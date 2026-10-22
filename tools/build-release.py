@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""打包可分发产物：读 manifest 版本号 -> 输出 zip、crx 与 SHA-256。
+"""打包可分发产物：读 manifest 版本号 -> 输出 crx 与 SHA-256。
 
 用法：
     python tools/build-release.py
 
-产物写入 build/out/。crx 由本机 Chrome 签名，密钥固定为 .keys/manqu.pem
+产物写入 build/out/。只分发 crx，不再生成 zip 安装包。
+crx 由本机 Chrome 签名，密钥固定为 .keys/manqu.pem
 （同一把密钥决定扩展 ID，删掉它会导致后续版本换 ID、用户必须重装）。
 """
 import hashlib
@@ -13,7 +14,6 @@ import os
 import shutil
 import subprocess
 import time
-import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build")
@@ -55,33 +55,24 @@ def main():
     out = os.path.join(BUILD, "out")
     os.makedirs(out, exist_ok=True)
 
-    zip_path = os.path.join(out, base + ".zip")
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
-        for root, _dirs, files in os.walk(stage_dir):
-            for name in sorted(files):
-                full = os.path.join(root, name)
-                z.write(full, os.path.relpath(full, stage_dir).replace("\\", "/"))
+    args = [CHROME, "--pack-extension=" + stage_dir, "--no-message-box"]
+    if os.path.exists(KEY):
+        args.append("--pack-extension-key=" + KEY)
+    subprocess.run(args, timeout=180, check=False)
 
-    crx_path = None
-    if os.path.exists(CHROME):
-        args = [CHROME, "--pack-extension=" + stage_dir, "--no-message-box"]
-        if os.path.exists(KEY):
-            args.append("--pack-extension-key=" + KEY)
-        subprocess.run(args, timeout=180, check=False)
+    produced = stage_dir + ".crx"
+    if not os.path.exists(produced):
+        raise SystemExit("Chrome 未产出 crx，打包失败")
 
-        produced = stage_dir + ".crx"
-        if os.path.exists(produced):
-            crx_path = os.path.join(out, base + ".crx")
-            shutil.move(produced, crx_path)
-            pem = stage_dir + ".pem"
-            if os.path.exists(pem) and not os.path.exists(KEY):
-                os.makedirs(os.path.dirname(KEY), exist_ok=True)
-                shutil.move(pem, KEY)
-        else:
-            print("警告：Chrome 未产出 crx，跳过")
+    crx_path = os.path.join(out, base + ".crx")
+    shutil.move(produced, crx_path)
 
-    for path in [zip_path] + ([crx_path] if crx_path else []):
-        print("%s\t%d\t%s" % (os.path.basename(path), os.path.getsize(path), sha256(path)))
+    pem = stage_dir + ".pem"
+    if os.path.exists(pem) and not os.path.exists(KEY):
+        os.makedirs(os.path.dirname(KEY), exist_ok=True)
+        shutil.move(pem, KEY)
+
+    print("%s\t%d\t%s" % (os.path.basename(crx_path), os.path.getsize(crx_path), sha256(crx_path)))
 
 
 if __name__ == "__main__":
