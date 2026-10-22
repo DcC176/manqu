@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "满区",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "识别直播间重复弹幕（独轮车），在画面本地叠加模拟弹幕增强氛围。仅在本机渲染，不会发送任何弹幕，不发起任何网络请求。",
   "permissions": ["storage"],
   "web_accessible_resources": [
