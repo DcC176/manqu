@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>满区 — 直播间在刷什么，就在你屏幕上继续刷</title>
+<meta name="description" content="B 站直播本地模拟弹幕扩展：识别聊天区里正被反复刷屏的那句话，在本机画面继续铺开。只绘制在本机 canvas，不发送、不联网，主播与其他观众都看不到。" />
+<meta name="theme-color" content="#08080b" />
+<meta property="og:title" content="满区 · 本地模拟弹幕增噪" />
+<meta property="og:description" content="识别直播间里被反复刷屏的句子，在本机画面继续铺开。不发送弹幕，不建立网络连接。" />
+<meta property="og:type" content="website" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230d0d12'/%3E%3Crect x='7' y='10' width='18' height='3' rx='1.5' fill='%23fd8c73'/%3E%3Crect x='11' y='16' width='14' height='3' rx='1.5' fill='%23f2f3f5' opacity='.55'/%3E%3Crect x='7' y='22' width='11' height='3' rx='1.5' fill='%23fb7299' opacity='.8'/%3E%3C/svg%3E" />
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --bg:#08080b; --bg-soft:#0c0c11; --card:#101016; --card-2:#16161e;
+  --line:rgba(255,255,255,.08); --line-strong:rgba(255,255,255,.15);
+  --fg:#f2f3f5; --muted:#a2a4ae; --dim:#6d6f7a;
+  --orange:#fd8c73; --orange-soft:rgba(253,140,115,.13);
+  --pink:#fb7299; --green:#3fb950;
+  --radius:16px; --maxw:1120px;
+  --font:"PingFang SC","HarmonyOS Sans SC","Noto Sans SC","Microsoft YaHei",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Consolas,monospace;
+}
+html{scroll-behavior:smooth}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:16px;line-height:1.7;
+  -webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+img{display:block;max-width:100%}
+h1,h2,h3,h4,p{margin:0}
+::selection{background:rgba(253,140,115,.3)}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 24px}
+
+/* ---------- nav ---------- */
+nav{position:sticky;top:0;z-index:50;background:rgba(8,8,11,.82);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line)}
+nav .wrap{height:62px;display:flex;align-items:center;gap:28px}
+.brand{display:flex;align-items:center;gap:9px;font-weight:600;letter-spacing:.3px}
+.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--orange);box-shadow:0 0 12px rgba(253,140,115,.7)}
+.nav-links{display:flex;gap:24px;margin-left:auto;font-size:14px;color:var(--muted)}
+.nav-links a:hover{color:var(--fg)}
+.nav-gh{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--fg);
+  padding:7px 13px;border:1px solid var(--line-strong);border-radius:9px;transition:background .18s,border-color .18s}
+.nav-gh:hover{background:var(--card-2);border-color:rgba(255,255,255,.28)}
+@media(max-width:820px){.nav-links{display:none}}
+
+/* ---------- hero ---------- */
+.hero{position:relative;padding:76px 0 40px;overflow:hidden}
+.hero::before{content:"";position:absolute;top:-260px;left:50%;transform:translateX(-50%);
+  width:900px;height:620px;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,rgba(253,140,115,.13),transparent 66%)}
+.hero .wrap{position:relative}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:var(--orange);
+  background:var(--orange-soft);border:1px solid rgba(253,140,115,.26);border-radius:999px;padding:5px 12px}
+.eyebrow .pulse{width:6px;height:6px;border-radius:50%;background:var(--orange);animation:pulse 2.4s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.28}}
+h1{margin:22px 0 0;font-size:clamp(38px,6.2vw,66px);line-height:1.1;letter-spacing:-1.6px;font-weight:700}
+h1 .accent{background:linear-gradient(96deg,var(--orange),var(--pink));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lede{margin-top:20px;max-width:640px;font-size:17px;color:var(--muted);line-height:1.85}
+.lede b{color:var(--fg);font-weight:600}
+.cta{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px}
+.btn{display:inline-flex;align-items:center;gap:9px;padding:13px 22px;border-radius:11px;
+  font-size:15px;font-weight:600;transition:transform .16s,background .18s,border-color .18s}
+.btn:hover{transform:translateY(-1px)}
+.btn-primary{background:var(--orange);color:#1a0d09}
+.btn-primary:hover{background:#ffa48f}
+.btn-ghost{border:1px solid var(--line-strong);color:var(--fg)}
+.btn-ghost:hover{background:var(--card-2);border-color:rgba(255,255,255,.3)}
+.meta{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:20px;font-size:12.5px;color:var(--dim);font-family:var(--mono)}
+.meta span{display:inline-flex;align-items:center;gap:6px}
+.meta i{width:4px;height:4px;border-radius:50%;background:var(--dim);display:block}
+
+.shot{margin-top:44px;border:1px solid var(--line);border-radius:18px;overflow:hidden;
+  background:var(--card);box-shadow:0 34px 90px -40px rgba(0,0,0,.95);position:relative}
+.shot img{width:100%;aspect-ratio:1384/805;object-fit:cover}
+.shot .tag{position:absolute;top:14px;left:14px;display:inline-flex;align-items:center;gap:7px;
+  font-size:11.5px;color:var(--fg);background:rgba(8,8,11,.78);backdrop-filter:blur(8px);
+  border:1px solid var(--line-strong);border-radius:8px;padding:5px 10px}
+.shot .tag b{color:var(--green);font-weight:600}
+
+/* ---------- stats ---------- */
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);
+  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;margin:56px 0 0}
+.stats div{background:var(--bg-soft);padding:22px 20px}
+.stats dt{font-family:var(--mono);font-size:25px;color:var(--fg);letter-spacing:-.5px}
+.stats dd{margin:4px 0 0;font-size:12.5px;color:var(--dim)}
+@media(max-width:720px){.stats{grid-template-columns:repeat(2,1fr)}}
+
+/* ---------- section ---------- */
+section.block{padding:88px 0 0}
+.kicker{font-family:var(--mono);font-size:12px;color:var(--orange);letter-spacing:1.6px;text-transform:uppercase}
+h2{margin:12px 0 0;font-size:clamp(26px,3.6vw,38px);line-height:1.28;letter-spacing:-.8px;font-weight:700}
+.sub{margin-top:14px;max-width:620px;color:var(--muted);font-size:15.5px}
+
+.grid{display:grid;gap:16px;margin-top:36px}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:960px){.g4{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:640px){.g4,.g3,.g2{grid-template-columns:1fr}}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:24px}
+.card:hover{border-color:var(--line-strong)}
+.card h3{font-size:16px;font-weight:600;margin-bottom:9px;display:flex;align-items:center;gap:9px}
+.card p{font-size:13.5px;color:var(--muted);line-height:1.8}
+.card .ico{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;
+  background:var(--orange-soft);color:var(--orange);flex:none}
+.card .ico svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+.steps{counter-reset:s;display:grid;gap:1px;background:var(--line);border:1px solid var(--line);
+  border-radius:var(--radius);overflow:hidden;margin-top:36px;grid-template-columns:repeat(4,1fr)}
+.steps > div{background:var(--bg-soft);padding:24px 22px;counter-increment:s}
+.steps > div::before{content:"0" counter(s);font-family:var(--mono);font-size:12px;color:var(--orange);letter-spacing:1px}
+.steps h3{font-size:15px;margin:10px 0 7px;font-weight:600}
+.steps p{font-size:13px;color:var(--muted);line-height:1.75}
+.steps code{font-family:var(--mono);font-size:11.5px;color:var(--orange);background:var(--orange-soft);
+  padding:1px 5px;border-radius:4px}
+@media(max-width:860px){.steps{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:560px){.steps{grid-template-columns:1fr}}
+
+/* ---------- gallery ---------- */
+.gallery{display:grid;grid-template-columns:1.55fr 1fr;gap:16px;margin-top:36px;align-items:start}
+.gallery figure{margin:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.gallery img{width:100%}
+.gallery figcaption{padding:14px 18px;font-size:12.5px;color:var(--dim);border-top:1px solid var(--line)}
+.gallery .side{display:grid;gap:16px}
+.gallery .side figure{display:flex;flex-direction:column}
+@media(max-width:860px){.gallery{grid-template-columns:1fr}}
+
+/* ---------- download ---------- */
+#download{padding-bottom:0}
+.dl{display:grid;grid-template-columns:1.15fr 1fr;gap:16px;margin-top:36px}
+@media(max-width:820px){.dl{grid-template-columns:1fr}}
+.dl-main{background:linear-gradient(160deg,rgba(253,140,115,.12),rgba(251,114,153,.05) 55%,transparent);
+  border:1px solid rgba(253,140,115,.3);border-radius:18px;padding:30px}
+.dl-main .ver{font-family:var(--mono);font-size:12px;color:var(--orange);letter-spacing:1px}
+.dl-main h3{font-size:21px;margin:10px 0 6px;font-weight:600}
+.dl-main p{font-size:13.5px;color:var(--muted);margin-bottom:20px}
+.dl-main .btn{width:100%;justify-content:center}
+.dl-side{display:grid;gap:12px;align-content:start}
+.file{display:flex;align-items:center;justify-content:space-between;gap:14px;
+  background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px 17px;transition:border-color .18s}
+.file:hover{border-color:var(--line-strong)}
+.file .n{font-family:var(--mono);font-size:13px}
+.file .m{font-size:11.5px;color:var(--dim);margin-top:2px}
+.file .go{font-size:12.5px;color:var(--orange);white-space:nowrap}
+
+.install{margin-top:28px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius);padding:26px 28px}
+.install h3{font-size:15px;font-weight:600;margin-bottom:16px}
+.install ol{margin:0;padding-left:0;list-style:none;counter-reset:i;display:grid;gap:12px}
+.install li{counter-increment:i;display:flex;gap:12px;font-size:13.5px;color:var(--muted);line-height:1.7}
+.install li::before{content:counter(i);flex:none;width:21px;height:21px;border-radius:50%;
+  background:var(--card-2);border:1px solid var(--line-strong);color:var(--fg);
+  font-family:var(--mono);font-size:11px;display:grid;place-items:center;margin-top:2px}
+.install code{font-family:var(--mono);font-size:12.5px;color:var(--fg);background:var(--card-2);
+  padding:2px 6px;border-radius:5px;border:1px solid var(--line)}
+.note{margin-top:18px;padding-top:16px;border-top:1px solid var(--line);font-size:12.5px;color:var(--dim);line-height:1.75}
+.note b{color:var(--orange);font-weight:600}
+
+.hashes{margin-top:16px;display:grid;gap:8px}
+.hash{display:flex;gap:10px;align-items:baseline;font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+.hash span:first-child{color:var(--muted);flex:none;width:120px}
+.hash code{word-break:break-all;color:var(--dim)}
+
+/* ---------- faq ---------- */
+details{border-bottom:1px solid var(--line);padding:20px 0}
+details:first-of-type{border-top:1px solid var(--line);margin-top:32px}
+summary{cursor:pointer;font-size:15px;font-weight:500;list-style:none;display:flex;justify-content:space-between;gap:16px}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";color:var(--dim);font-family:var(--mono);font-size:18px;line-height:1}
+details[open] summary::after{content:"−"}
+details p{margin-top:12px;font-size:13.5px;color:var(--muted);max-width:780px;line-height:1.85}
+details p + p{margin-top:8px}
+
+/* ---------- footer ---------- */
+footer{margin-top:96px;border-top:1px solid var(--line);padding:34px 0 46px;font-size:12.5px;color:var(--dim)}
+footer .wrap{display:flex;flex-wrap:wrap;gap:14px 26px;align-items:center}
+footer a:hover{color:var(--fg)}
+footer .sp{margin-left:auto}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><span class="dot"></span>满区</a>
+    <div class="nav-links">
+      <a href="#features">功能</a>
+      <a href="#how">原理</a>
+      <a href="#shots">界面</a>
+      <a href="#download">下载</a>
+      <a href="#faq">常见问题</a>
+    </div>
+    <a class="nav-gh" href="https://github.com/DcC176/manqu" target="_blank" rel="noopener">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.4 7.4 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+      源码
+    </a>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <span class="eyebrow"><span class="pulse"></span>v1.0.0 · 2026-10-22 · MIT</span>
+    <h1>直播间在刷什么<br /><span class="accent">就在你屏幕上继续刷</span></h1>
+    <p class="lede">
+      识别聊天区里正被反复刷屏的那句话，然后在<b>你自己的画面</b>上把节奏铺开。
+      模拟弹幕只绘制在本机浏览器的 canvas 上——<b>不发送到 B 站</b>，不建立任何网络连接，主播与其他观众都看不到。
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#download">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>
+        下载安装包
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/DcC176/manqu/releases" target="_blank" rel="noopener">全部版本</a>
+    </div>
+    <div class="meta">
+      <span>38 KB</span><i></i>
+      <span>仅 storage 权限</span><i></i>
+      <span>0 次网络请求</span><i></i>
+      <span>Chrome / Edge MV3</span>
+    </div>
+
+    <div class="shot">
+      <span class="tag"><b>●</b> 本地渲染 · 未联网</span>
+      <img src="assets/ui-side-card.png" width="1384" height="805" alt="满区在直播间右下角显示控制面板，画面中叠加了模拟弹幕" />
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <dl class="stats">
+    <div><dt>30<small>s</small></dt><dd>判定窗口，同一句话的重复计数区间</dd></div>
+    <div><dt>3<small>s</small></dt><dd>采样真实弹幕样式并应用给模拟弹幕</dd></div>
+    <div><dt>4<small>px</small></dt><dd>拖动判定阈值，小于即视为点击</dd></div>
+    <div><dt>1</dt><dd>唯一申请的权限：storage</dd></div>
+  </dl>
+</div>
+
+<section class="block" id="features">
+  <div class="wrap">
+    <p class="kicker">Features</p>
+    <h2>四个不妥协的地方</h2>
+    <p class="sub">这类插件最容易翻车的地方是「看起来像，但一眼假」。下面四件事决定了它像不像直播间自己长出来的。</p>
+
+    <div class="grid g4">
+      <article class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></span>只认真实重复</h3>
+        <p>30 秒滑动窗口统计同一句话的出现次数，达到阈值才判定为刷屏。短句（≤3 字，如「666」）阈值自动抬高——那更可能是自然互动，不是独轮车。</p>
+      </article>
+      <article class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/><circle cx="12" cy="12" r="3.4"/></svg></span>跟随直播间的样子</h3>
+        <p>每 3 秒采样真实弹幕的字号、字重、描边、字体族与颜色分布。以白色为主的直播间模拟出来也以白色为主，偶尔的彩色只会偶尔出现。</p>
+      </article>
+      <article class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>画在弹幕区</h3>
+        <p>画布对齐弹幕容器而非 <code>&lt;video&gt;</code>。视频有黑边时不会画进黑边里；网页全屏、窗口缩放、真全屏都能跟着对齐。</p>
+      </article>
+      <article class="card">
+        <h3><span class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 5V3M12 21v-2M5 12H3M21 12h-2"/><circle cx="12" cy="12" r="8.4"/></svg></span>面板不挡路</h3>
+        <p>右下角悬浮球，点击开合、按住拖动。展开方向按可用空间自动翻边，出界就换一侧。位移超过 4px 才算拖动，拖完松手不会误触。</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="how">
+  <div class="wrap">
+    <p class="kicker">How it works</p>
+    <h2>从一条真实弹幕，到一片模拟弹幕</h2>
+    <p class="sub">全程只读页面已有的 DOM，不发一个字节出去。刻意没有走 WebSocket 解析——B 站弹幕包在 ver=3 时是 brotli 压缩，浏览器原生解不开，引解码器要涨几百 KB，而聊天区早就有了同样的文本。</p>
+
+    <div class="steps">
+      <div>
+        <h3>采集</h3>
+        <p><code>MutationObserver</code> 监听聊天区，只读 <code>data-danmaku</code> 与时间戳，不修改页面任何节点。</p>
+      </div>
+      <div>
+        <h3>计数</h3>
+        <p>文本归一化后进入 30 秒滑动窗口，按 B 站自己的 <code>data-id_str</code> 去重，聊天区重渲染不会重复计数。</p>
+      </div>
+      <div>
+        <h3>判定</h3>
+        <p>达到阈值即进入生成池；按文本长度分档抬高短句门槛。25 秒没有新的真实重复，自动淘汰出池。</p>
+      </div>
+      <div>
+        <h3>重放</h3>
+        <p>按「密度」从池中取出文本，投放到独立 canvas 上滚动。模拟弹幕不参与识别，不会自我放大。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="shots">
+  <div class="wrap">
+    <p class="kicker">Interface</p>
+    <h2>两件东西：一张卡，一个球</h2>
+    <p class="sub">参数只有三个：开关、密度、判定阈值。所有改动即时生效，不需要刷新页面。</p>
+
+    <div class="gallery">
+      <figure>
+        <img src="assets/ui-cart-mode.png" width="1384" height="805" alt="区区模式：判定阈值设为 1 时的面板与模拟弹幕" />
+        <figcaption>阈值设为 1 的「区区模式」：出现过一次就刷。密度 55 时画面已经被填满。</figcaption>
+      </figure>
+      <div class="side">
+        <figure>
+          <img src="assets/ui-popup.png" width="600" height="500" alt="工具栏弹出面板：启用、彩色模拟、显示角标" />
+          <figcaption>工具栏图标里的全局设置。</figcaption>
+        </figure>
+        <figure>
+          <img src="assets/ui-mini-icon.png" width="318" height="318" alt="悬浮球图标" />
+          <figcaption>悬浮球使用插件图标，带轻微摆动动画，关闭时转为灰度。</figcaption>
+        </figure>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="download">
+  <div class="wrap">
+    <p class="kicker">Download</p>
+    <h2>下载安装包</h2>
+    <p class="sub">绿色免安装，不写注册表。解压后用 Chrome 的「加载已解压的扩展程序」载入即可，全程不到一分钟。</p>
+
+    <div class="dl">
+      <div class="dl-main">
+        <p class="ver">LATEST · v1.0.0 · 2026-10-22</p>
+        <h3>manqu-v1.0.0.zip</h3>
+        <p>38,010 字节 · 7 个文件 · 解压即是一个完整扩展目录</p>
+        <a class="btn btn-primary" href="https://github.com/DcC176/manqu/releases/download/v1.0.0/manqu-v1.0.0.zip">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>
+          下载 zip
+        </a>
+      </div>
+
+      <div class="dl-side">
+        <a class="file" href="https://github.com/DcC176/manqu/releases/download/v1.0.0/manqu-v1.0.0.crx">
+          <span>
+            <span class="n">manqu-v1.0.0.crx</span>
+            <span class="m">39,189 字节 · 已签名 · 部分浏览器可拖入</span>
+          </span>
+          <span class="go">下载 →</span>
+        </a>
+        <a class="file" href="https://github.com/DcC176/manqu" target="_blank" rel="noopener">
+          <span>
+            <span class="n">源码仓库</span>
+            <span class="m">git clone · MIT License</span>
+          </span>
+          <span class="go">GitHub →</span>
+        </a>
+        <a class="file" href="https://github.com/DcC176/manqu/releases" target="_blank" rel="noopener">
+          <span>
+            <span class="n">版本历史</span>
+            <span class="m">全部 Release 与更新日志</span>
+          </span>
+          <span class="go">查看 →</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="install">
+      <h3>zip 安装步骤（推荐，Chrome 与 Edge 均适用）</h3>
+      <ol>
+        <li>下载 zip，解压到一个<b>固定目录</b>。不要留在「下载」或临时文件夹——清理后扩展会失效。</li>
+        <li>地址栏打开 <code>chrome://extensions</code>（Edge 为 <code>edge://extensions</code>）。</li>
+        <li>打开右上角的<b>开发者模式</b>。</li>
+        <li>点「<b>加载已解压的扩展程序</b>」，选择刚才解压出来的目录（里面能看到 manifest.json）。</li>
+        <li>进入任意直播间，右下角出现悬浮球即安装成功。</li>
+      </ol>
+      <p class="note">
+        <b>关于 .crx 拖入：</b>Chrome 稳定版会拒绝安装非 Chrome 应用商店来源的 crx，把文件拖进扩展页没有反应或被拦下，这是浏览器策略，不是插件问题。
+        Edge 与部分 Chromium 系浏览器仍接受侧载，可以尝试拖入 <code>edge://extensions</code>。任何情况下 zip 方式都可行。
+      </p>
+      <div class="hashes">
+        <div class="hash"><span>zip SHA-256</span><code>bd121cf269710ad4c38b422c21892df6014d0bb3414d0c77fde28e20ef13f59f</code></div>
+        <div class="hash"><span>crx SHA-256</span><code>e72a7de16879703fd8af90aaa5cd5692e20f54c8d90c26ce1a913f3a00365cdb</code></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" id="faq">
+  <div class="wrap">
+    <p class="kicker">FAQ</p>
+    <h2>常见问题</h2>
+
+    <details open>
+      <summary>主播和其他观众能看到我刷的内容吗？</summary>
+      <p>不能。模拟弹幕只绘制在本机浏览器创建的一块 canvas 上：不写入页面 DOM、不调用任何 B 站接口、不建立 WebSocket 或 HTTP 连接。插件的网络请求数为 0，因此从服务端到其他观众，都不存在这份数据。</p>
+      <p>唯一的例外是你自己截图或录屏分享出去——那部分内容会出现在画面里。</p>
+    </details>
+
+    <details>
+      <summary>为什么 Chrome 不让我拖 crx 安装？</summary>
+      <p>Chrome 稳定版只允许安装来自 Chrome 应用商店的扩展，非商店来源的 crx 会被直接拒绝。这与文件是否签名无关，是浏览器侧的安装策略。</p>
+      <p>可行路径是「加载已解压的扩展程序」：解压 zip 后在扩展页手动载入。代价是首次需要打开开发者模式，好处是不依赖任何商店审核。</p>
+    </details>
+
+    <details>
+      <summary>它会把我的判定越刷越多，形成自我放大吗？</summary>
+      <p>不会。模拟弹幕渲染在独立 canvas 上，不是 DOM 节点，采集器只看聊天区里的真实弹幕，因此插件生成的文本永远不会回流进判定池。</p>
+    </details>
+
+    <details>
+      <summary>为什么进直播间没反应，面板显示「捕获 0」？</summary>
+      <p>说明当前聊天区没有新弹幕。插件不模拟「无中生有」，只有直播间本身在动，它才有素材可跟随。换一个人多的直播间，或等房间开始有互动即可。</p>
+      <p>如果换了房间仍然一直是 0，可能是 B 站改版导致聊天区选择器失效——这类问题需要在仓库提 issue，附上房间号与浏览器版本。</p>
+    </details>
+
+    <details>
+      <summary>更新扩展后为什么没生效？</summary>
+      <p>Chrome 不会把新版 content script 重新注入已经打开的标签页。更新后请刷新直播间页面：旧脚本会在约 1 秒内自行退出并清除自己的界面，不会报错也不会残留。</p>
+    </details>
+
+    <details>
+      <summary>怎么彻底卸载？</summary>
+      <p>打开 <code>chrome://extensions</code>，找到「满区」，点「移除」。设置保存在浏览器本地存储里，会随移除一并清除；解压出来的文件夹可以直接删除。</p>
+    </details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>满区 · MIT License · 2026</span>
+    <a href="https://github.com/DcC176/manqu" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://github.com/DcC176/manqu/releases" target="_blank" rel="noopener">Releases</a>
+    <a href="https://github.com/DcC176/manqu/blob/main/CHANGELOG.md" target="_blank" rel="noopener">更新日志</a>
+    <span class="sp">非官方项目，与哔哩哔哩无关联</span>
+  </div>
+</footer>
+
+</body>
+</html>
