@@ -32,7 +32,7 @@
 
   const WIN_MS = 30000;      // 识别滑动窗口
   const POOL_TTL = 25000;    // 独轮车在生成池中的存活时间
-  const MAX_ITEMS = 150;     // 同屏模拟弹幕上限
+  const MAX_ITEMS = 600;     // 同屏模拟弹幕上限
   const FONT = '"Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif';
 
   const LIST_SEL = [
@@ -285,12 +285,20 @@
     dpr: 0,
     fontSize: 20,
     rowH: 30,
+    rowScale: 1.45,
     rows: 0,
     running: false,
     lastT: 0,
+    target: 60,
+    acc: 0,
+    dprCap: 1.5,
+    total: 0,
+    samples: 0,
+    frameMs: 0,
     frame: 0,
     video: null,
     box: null,
+    rect: null,
 
     init() {
       // 扩展重载后旧实例的 canvas 可能还挂着，先清掉
@@ -326,31 +334,44 @@
     },
 
     sync() {
-      if ((this.frame++ & 63) === 0 || !this.video || !this.video.isConnected) {
+      // 每 8 帧才重新量一次位置：getBoundingClientRect 会强制布局，
+      // 逐帧调用在高密度下是纯主线程浪费。
+      const refresh = (this.frame++ & 7) === 0 || !this.rect || !this.video || !this.video.isConnected;
+
+      if (refresh) {
         this.video = this.pickVideo();
         this.box = document.querySelector('.danmaku-item-container');
+
+        const el = (this.box && this.box.isConnected) ? this.box : this.video;
+        const r = el ? el.getBoundingClientRect() : null;
+        this.rect = r;
+        if (!r || r.width < 80 || r.height < 80) return false;
+
+        const host = this.host();
+        if (this.canvas.parentElement !== host) host.appendChild(this.canvas);
+
+        this.canvas.style.transform = `translate3d(${r.left}px,${r.top}px,0)`;
+        this.resize(r.width, r.height);
       }
-      const v = this.video;
-      if (!v) return false;
 
-      // 优先对齐真实弹幕区：视频用 object-fit contain 时，画在整个 video 上会跑到黑边里
-      const box = this.box && this.box.isConnected ? this.box : null;
-      const r = (box || v).getBoundingClientRect();
-      if (r.width < 80 || r.height < 80) return false;
-
-      const host = this.host();
-      if (this.canvas.parentElement !== host) host.appendChild(this.canvas);
-
-      this.canvas.style.transform = `translate3d(${r.left}px,${r.top}px,0)`;
-      this.resize(r.width, r.height);
-      return true;
+      return !!this.rect && this.rect.width >= 80 && this.rect.height >= 80;
     },
 
     resize(w, h) {
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // 上限 1.5：高密度下 canvas 光栅化与合成是主要开销，2 倍分辨率要多付 78% 的像素，
+      // 而弹幕一直在动，肉眼看不出这点清晰度差异。
+      const dpr = Math.min(window.devicePixelRatio || 1, this.dprCap);
       // 字号优先跟随页面真实弹幕，采样不到再按播放器高度推算
       const fs = look.fs > 0 ? look.fs : Math.max(15, Math.min(28, h * 0.038));
-      if (this.w === w && this.h === h && this.dpr === dpr && this.fontSize === fs) return;
+      // 密度超过 100 后逐步压紧行距：1.45 倍字高 → 500 时 1.0 倍
+      const scale = cfg.intensity > 100
+        ? Math.max(1.0, 1.45 - ((cfg.intensity - 100) / 400) * 0.45)
+        : 1.45;
+
+      if (this.w === w && this.h === h && this.dpr === dpr
+          && this.fontSize === fs && this.rowScale === scale) return;
+
+      const fsChanged = this.fontSize !== fs;
 
       this.w = w;
       this.h = h;
@@ -362,11 +383,18 @@
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       this.fontSize = fs;
-      this.rowH = fs * 1.45;
-      this.rows = Math.max(3, Math.floor(h / this.rowH));
-      this.rowRight = new Array(this.rows).fill(-1e9);
+      this.rowScale = scale;
+      this.rowH = fs * scale;
 
-      this.items.length = 0;
+      const rows = Math.max(3, Math.floor(h / this.rowH));
+      if (rows !== this.rows) {
+        this.rows = rows;
+        this.rowRight = new Array(rows).fill(-1e9);
+      }
+
+      // 只有字号变了才作废已有弹幕（文本宽度是按字号量出来的），
+      // 拖动密度滑块时不清屏，否则会一路闪。
+      if (fsChanged) this.items.length = 0;
       this.ctx.font = fontOf(fs);
     },
 
@@ -375,28 +403,37 @@
       if (!this.ctx || !this.sync()) return false;
       if (this.items.length >= MAX_ITEMS) return false;
 
-      this.ctx.font = fontOf(this.fontSize);
-      const w = this.ctx.measureText(text).width;
-
       const free = [];
+      let pick = 0;
+      let minRight = Infinity;
       for (let i = 0; i < this.rows; i++) {
-        if (this.rowRight[i] + 34 < this.w) free.push(i);
+        const right = this.rowRight[i];
+        if (right + 34 < this.w) free.push(i);
+        if (right < minRight) { minRight = right; pick = i; }
       }
-      // 没有空闲轨道就放弃这一条，宁可稀疏也不要叠字。
-      if (!free.length) return false;
+
+      // 低密度：没有空闲轨道就放弃这一条，宁可稀疏也不叠字。
+      // 高密度（>100）：放开限制，挑最快腾空的一行硬投，接受重叠。
+      if (!free.length) {
+        if (cfg.intensity <= 100) return false;
+        free.push(pick);
+      }
 
       const row = free[(Math.random() * free.length) | 0];
       const color = cfg.colorize
         ? PALETTE[(Math.random() * PALETTE.length) | 0]
         : look.colors[(Math.random() * look.colors.length) | 0];
 
+      this.ctx.font = fontOf(this.fontSize);
+      const w = this.ctx.measureText(text).width;
+
       const item = {
         text,
+        color,
         w,
         x: this.w + 8,
         y: row * this.rowH + 4,
         row,
-        color,
         speed: (this.w / 9) * (0.92 + Math.random() * 0.26)
       };
       this.items.push(item);
@@ -429,14 +466,55 @@
         return;
       }
 
+      // 每 60 帧看一次平均帧时间，低于 50fps 就退到 30fps：
+      // 稳定的 30 比在 40–60 之间波动看起来顺。单向降级，不自动升回。
+      // 前 90 帧不计，避开开局加载与尺寸变化造成的假象。
+      Layer.total++;
+      Layer.samples++;
+      Layer.frameMs += dt;
+      if (Layer.samples >= 60) {
+        const avg = Layer.frameMs / Layer.samples;
+        if (Layer.total > 90) {
+          if (Layer.target === 60 && avg > 0.020) {
+            // 一级：先降帧率，观感损失最小
+            Layer.target = 30;
+            Layer.acc = 0;
+          } else if (Layer.target === 30 && avg > 0.040 && Layer.dprCap > 1) {
+            // 二级：30fps 都撑不住，再降渲染分辨率（像素量少 56%）
+            Layer.dprCap = 1;
+            Layer.rect = null;
+          }
+        }
+        Layer.samples = 0;
+        Layer.frameMs = 0;
+        if (Layer.canvas) Layer.canvas.dataset.quality = Layer.target + '@' + Layer.dprCap;
+      }
+
+      // 降帧时靠累积时间控制绘制节奏，位移仍按真实经过时间推进，速度不变。
+      let step = dt;
+      if (Layer.target < 60) {
+        Layer.acc += dt;
+        if (Layer.acc < 1 / Layer.target) {
+          requestAnimationFrame(Layer.loop);
+          return;
+        }
+        step = Math.min(Layer.acc, 0.1);
+        Layer.acc = 0;
+      }
+
       const items = Layer.items;
       const rr = Layer.rowRight;
       rr.fill(-1e9);
 
       for (let i = items.length - 1; i >= 0; i--) {
         const it = items[i];
-        it.x -= it.speed * dt;
-        if (it.x + it.w < -10) { items.splice(i, 1); continue; }
+        it.x -= it.speed * step;
+        if (it.x + it.w < -10) {
+          // swap-pop 取代 splice：大数组下避免整段搬移
+          const last = items.pop();
+          if (i < items.length) items[i] = last;
+          continue;
+        }
         const right = it.x + it.w;
         if (right > rr[it.row]) rr[it.row] = right;
       }
@@ -449,11 +527,12 @@
       ctx.miterLimit = 2;
       ctx.globalAlpha = look.alpha;
 
-      // B站用 -webkit-text-stroke 时其宽度是单边值，canvas 的 lineWidth 是总宽，约等于两倍
-      const lw = look.stroke > 0 ? look.stroke * 2 : Math.max(1.5, Layer.fontSize * 0.1);
+      // B站 DOM 弹幕用 -webkit-text-stroke 纯黑细边。canvas 这边描边过粗会让笔画粘连，
+      // 过透明又会让边缘发虚，两者在快速移动时都会被误看成重影，取中间值。
+      const lw = look.stroke > 0 ? look.stroke * 1.6 : Math.max(1.5, Layer.fontSize * 0.07);
       for (const it of items) {
         ctx.lineWidth = lw;
-        ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)';
         ctx.strokeText(it.text, it.x, it.y);
         ctx.fillStyle = it.color;
         ctx.fillText(it.text, it.x, it.y);
@@ -464,6 +543,8 @@
         // 画在视频上，明暗背景都要能看清：白字 + 深色描边
         const by = Layer.h - Math.max(14, Layer.fontSize * 0.75);
         ctx.font = `${Math.max(10, Layer.fontSize * 0.52)}px ${FONT}`;
+        ctx.textBaseline = 'top';
+        ctx.lineJoin = 'round';
         ctx.lineWidth = 2.5;
         ctx.strokeStyle = 'rgba(0,0,0,0.30)';
         ctx.strokeText('本地模拟', 12, by);
@@ -631,7 +712,7 @@
           </div>
           <div class="grp">
             <div class="row"><span class="lab">密度</span><span class="val" id="iv">55</span></div>
-            <input type="range" id="ir" min="0" max="200" step="5" value="55" aria-label="密度">
+            <input type="range" id="ir" min="0" max="1000" step="5" value="55" aria-label="密度">
           </div>
           <div class="grp">
             <div class="row"><span class="lab">判定阈值</span><span class="val" id="tv">4</span></div>
