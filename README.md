@@ -5,7 +5,7 @@
 > 模拟弹幕只绘制在本机浏览器的 canvas 上——不写页面 DOM、不发送到 B 站、不建立任何网络连接。
 > 主播和其他观众都看不到。
 
-![面板与模拟弹幕](assets/ui-side-card.png)
+![满区](assets/keyart-closeup.jpg)
 
 下载页：<https://dcc176.github.io/manqu/> · 版本历史：[Releases](https://github.com/DcC176/manqu/releases)
 
@@ -25,6 +25,8 @@ Edge 与多数 Chromium 系浏览器接受这种方式。Chrome 稳定版会拒�
 **更新扩展后请刷新直播间页面**：Chrome 不会把新版 content script 重新注入已打开的标签页。旧脚本会在约 1 秒内自行退出并清除自己的界面（不会报错，也不会残留），但也不会自动变成新版本。
 
 ## 使用
+
+![控制面板与模拟弹幕](assets/ui-side-card.png)
 
 | 控件 | 说明 |
 | --- | --- |
