@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; width: 260px; padding: 14px 15px 13px;
+    background: #fff; color: #1f2328;
+    font: 12px/1.6 "Microsoft YaHei", -apple-system, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1 {
+    margin: 0 0 2px; font-size: 13px; font-weight: 600; letter-spacing: .2px;
+    display: flex; align-items: center; gap: 7px;
+  }
+  h1::before {
+    content: ""; width: 8px; height: 8px; border-radius: 50%;
+    background: #fd8c73;
+  }
+  .sub { margin: 0 0 12px; color: #8b949e; font-size: 11px; }
+  .item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 0; border-top: 1px solid #eaeef2;
+  }
+  .item span { color: #59636e; }
+  .sw {
+    position: relative; width: 34px; height: 19px; border-radius: 10px;
+    background: #d1d9e0; cursor: pointer; flex: none;
+    transition: background .16s;
+  }
+  .sw::after {
+    content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(31,35,40,.22);
+    transition: transform .16s;
+  }
+  .sw.on { background: #1f883d; }
+  .sw.on::after { transform: translateX(15px); }
+  .note {
+    margin-top: 11px; padding-top: 10px; border-top: 1px solid #eaeef2;
+    color: #8b949e; font-size: 10.5px; line-height: 1.55;
+  }
+  .note b { color: #59636e; font-weight: 500; }
+</style>
+</head>
+<body>
+  <h1>满区</h1>
+  <p class="sub">进直播间后，面板在右下角</p>
+
+  <div class="item"><span>启用</span><div class="sw on" id="enabled"></div></div>
+  <div class="item"><span>彩色模拟</span><div class="sw" id="colorize"></div></div>
+  <div class="item"><span>显示角标</span><div class="sw on" id="badge"></div></div>
+
+  <p class="note">
+    模拟弹幕<b>只绘制在本机画面</b>，不会发送到 B 站，主播与其他观众均不可见。
+    插件不发起任何网络请求。
+  </p>
+
+  <script src="popup.js"></script>
+</body>
+</html>
