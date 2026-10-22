@@ -212,6 +212,20 @@ h2{font-size:clamp(24px,3.2vw,36px);line-height:1.25;letter-spacing:-.01em;font-
   font-size:12.5px;color:var(--dim);font-family:var(--mono)}
 .asset-act{display:flex;align-items:center;gap:10px;justify-content:flex-end}
 .asset .btn{height:46px;min-width:136px;justify-content:center;padding:0 22px;font-size:14px;border-radius:10px}
+.mirrors{margin-top:18px;padding:16px 18px;border:1px dashed var(--line-strong);
+  border-radius:12px;background:rgba(8,8,10,.42)}
+.mirrors h4{margin:0 0 12px;font-size:13px;font-weight:600;color:var(--fg);
+  display:flex;align-items:center;gap:8px}
+.mirrors h4 svg{width:14px;height:14px;stroke:var(--accent);fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+.m-links{display:flex;flex-wrap:wrap;gap:8px}
+.m-link{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:12.5px;
+  padding:8px 13px;border:1px solid var(--line-strong);border-radius:9px;color:var(--accent);
+  background:var(--card-2);transition:.18s}
+.m-link:hover{border-color:var(--accent);background:var(--accent-soft);transform:translateY(-1px)}
+.m-link svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:1.9;
+  stroke-linecap:round;stroke-linejoin:round}
+.m-note{margin-top:11px;font-size:11.5px;color:var(--dim);line-height:1.7}
 .hash{margin-top:14px;font-family:var(--mono);font-size:11.5px;color:var(--dim);
   display:flex;gap:10px;flex-wrap:wrap;line-height:1.7}
 .hash b{color:var(--muted);font-weight:500;flex:none}
@@ -219,13 +233,14 @@ h2{font-size:clamp(24px,3.2vw,36px);line-height:1.25;letter-spacing:-.01em;font-
 .install{margin-top:24px;padding-top:22px;border-top:1px solid var(--line)}
 .install h4{font-size:14px;font-weight:600;margin-bottom:14px;color:var(--fg)}
 .install ol{margin:0;padding-left:0;list-style:none;counter-reset:i;display:grid;gap:11px}
-.install li{counter-increment:i;display:flex;gap:12px;font-size:13.5px;color:var(--muted);
-  line-height:1.7;min-width:0;overflow-wrap:anywhere}
-.install li::before{content:counter(i);flex:none;width:21px;height:21px;border-radius:50%;
+.install li{counter-increment:i;position:relative;padding-left:33px;font-size:13.5px;
+  color:var(--muted);line-height:1.7}
+.install li::before{content:counter(i);position:absolute;left:0;top:2px;
+  width:21px;height:21px;border-radius:50%;
   background:var(--card-2);border:1px solid var(--line-strong);color:var(--fg);
-  font-family:var(--mono);font-size:11px;display:grid;place-items:center;margin-top:2px}
+  font-family:var(--mono);font-size:11px;display:grid;place-items:center}
 .install code{font-family:var(--mono);font-size:12.5px;color:var(--fg);background:var(--card-2);
-  padding:2px 6px;border-radius:5px;border:1px solid var(--line)}
+  padding:2px 6px;border-radius:5px;border:1px solid var(--line);white-space:nowrap}
 .dl-tip{margin-top:20px;padding-top:18px;border-top:1px solid var(--line);
   font-size:12.5px;color:var(--dim);line-height:1.8;max-width:60em}
 .dl-tip b{color:var(--accent);font-weight:600}
@@ -477,6 +492,22 @@ footer{border-top:1px solid var(--line);padding:clamp(30px,4vw,46px) 0}
             </a>
             <a class="btn ghost" href="https://github.com/DcC176/manqu" target="_blank" rel="noopener" style="min-width:0;padding:0 18px">源码</a>
           </div>
+        </div>
+
+        <div class="mirrors">
+          <h4><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7.5 10.5 12 15l4.5-4.5M4 19h16"/></svg>国内加速镜像</h4>
+          <div class="m-links">
+            <a class="m-link" href="https://ghfast.top/https://github.com/DcC176/manqu/releases/download/v1.0.0/manqu-v1.0.0.crx">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>ghfast.top
+            </a>
+            <a class="m-link" href="https://gh-proxy.com/https://github.com/DcC176/manqu/releases/download/v1.0.0/manqu-v1.0.0.crx">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>gh-proxy.com
+            </a>
+            <a class="m-link" href="https://ghproxy.net/https://github.com/DcC176/manqu/releases/download/v1.0.0/manqu-v1.0.0.crx">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M4.5 7.5 8 11l3.5-3.5M3 13.5h10"/></svg>ghproxy.net
+            </a>
+          </div>
+          <p class="m-note">第三方加速服务，与项目无关，随时可能失效。三个入口返回的文件与官方一致，下载后可用下方 SHA-256 校验。</p>
         </div>
 
         <p class="hash"><b>SHA-256</b><code>e72a7de16879703fd8af90aaa5cd5692e20f54c8d90c26ce1a913f3a00365cdb</code></p>
